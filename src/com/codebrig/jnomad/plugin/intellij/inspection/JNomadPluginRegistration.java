@@ -26,12 +26,12 @@ public class JNomadPluginRegistration implements ApplicationComponent {
             @Override
             public void actionPerformed(AnActionEvent anActionEvent) {
                 Project project = anActionEvent.getData(PlatformDataKeys.PROJECT);
-
                 JNomadConfigurationPanel configPanel = new JNomadConfigurationPanel();
                 DialogBuilder builder = new DialogBuilder(project);
                 builder.setTitle("JNomad Configuration");
                 builder.setCenterPanel(configPanel);
                 builder.setOkActionEnabled(true);
+
                 if (DialogWrapper.OK_EXIT_CODE == builder.show()) {
                     PropertiesComponent propertiesComponent = PropertiesComponent.getInstance(project);
                     if (configPanel.getDatabasePort() != null && !configPanel.getDatabasePort().isEmpty()) {
