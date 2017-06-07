@@ -1,0 +1,21 @@
+<idea-plugin>
+    <id>com.codebrig.jnomad.plugin</id>
+    <name>JNomad Plugin</name>
+    <version>1.0</version>
+    <vendor email="support@codebrig.com" url="http://www.codebrig.com">CodeBrig, LLC.</vendor>
+
+    <description><![CDATA[
+      Inspection for HQL/SQL efficiency. Uses JNomad library
+    ]]></description>
+
+    <idea-version since-build="141.0"/>
+    <extensions defaultExtensionNs="com.intellij">
+        <inspectionToolProvider implementation="com.codebrig.jnomad.plugin.intellij.inspection.JNomadInspectionProvider"/>
+    </extensions>
+
+    <application-components>
+        <component>
+            <implementation-class>com.codebrig.jnomad.plugin.intellij.inspection.JNomadPluginRegistration</implementation-class>
+        </component>
+    </application-components>
+</idea-plugin>
