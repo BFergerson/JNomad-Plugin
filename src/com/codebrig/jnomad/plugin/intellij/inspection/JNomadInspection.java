@@ -12,12 +12,10 @@ import com.codebrig.jnomad.task.explain.adapter.postgres.PostgresDatabaseDataTyp
 import com.codebrig.jnomad.task.extract.extractor.query.QueryLiteralExtractor;
 import com.codebrig.jnomad.task.parse.QueryParser;
 import com.github.javaparser.Range;
-import com.github.javaparser.symbolsolver.model.declarations.TypeDeclaration;
-import com.github.javaparser.symbolsolver.model.resolution.SymbolReference;
-import com.github.javaparser.symbolsolver.resolution.typesolvers.JreTypeSolver;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.hash.Hashing;
+import com.google.gson.Gson;
 import com.intellij.codeInsight.daemon.GroupNames;
 import com.intellij.codeInspection.BaseJavaLocalInspectionTool;
 import com.intellij.codeInspection.ProblemsHolder;
@@ -28,14 +26,12 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.*;
-import org.eclipse.jdt.internal.compiler.ast.Literal;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.*;
-import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -103,7 +99,7 @@ class JNomadInspection extends BaseJavaLocalInspectionTool {
     private transient static JNomad jnomad;
     private transient static QueryParser queryParser;
     private transient static boolean setupStarted = false;
-    private transient static int slowQueryThreshold = 0;
+    private transient static JNomadPluginConfiguration pluginConfiguration;
 
     static synchronized void resetSetup() {
         JNomadInspection.jnomad = null;
@@ -150,34 +146,31 @@ class JNomadInspection extends BaseJavaLocalInspectionTool {
         jnomad.setCacheScanResults(false);
         jnomad.setOffenderReportPercentage(100);
 
-        //db access
+        //load JNomad plugin configuration
         for (Project project : ProjectManager.getInstance().getOpenProjects()) {
             PropertiesComponent propertiesComponent = PropertiesComponent.getInstance(project);
-            String host = propertiesComponent.getValue("jnomad.database.host");
-            String database = propertiesComponent.getValue("jnomad.database.db");
-            String username = propertiesComponent.getValue("jnomad.database.username");
-            String password = propertiesComponent.getValue("jnomad.database.password");
-            String slowQueryThresholdStr = propertiesComponent.getValue("jnomad.slow_query.threshold");
-            String recommendIndexThresholdStr = propertiesComponent.getValue("jnomad.recommend_index.threshold");
-
-            if (host != null && database != null && username != null && password != null) {
-                String[] hostParts = host.split(";");
-                String[] databaseParts = database.split(";");
-                String[] usernameParts = username.split(";");
-                String[] passwordParts = password.split(";");
-                for (int i = 0; i < hostParts.length; i++) {
-                    jnomad.getDbHost().add(hostParts[i]);
-                    jnomad.getDbDatabase().add(databaseParts[i]);
-                    jnomad.getDbUsername().add(usernameParts[i]);
-                    jnomad.getDbPassword().add(passwordParts[i]);
-                    System.out.println("Found connection settings for database: " + databaseParts[i] + " (Host: " + hostParts[i] + ")");
-                }
-            }
-            if (slowQueryThresholdStr != null && recommendIndexThresholdStr != null) {
-                slowQueryThreshold = Integer.valueOf(slowQueryThresholdStr);
-                jnomad.setIndexPriorityThreshold(Integer.valueOf(recommendIndexThresholdStr));
+            String configStr = propertiesComponent.getValue("jnomad.plugin.configuration");
+            if (configStr != null) {
+                pluginConfiguration = new Gson().fromJson(configStr, JNomadPluginConfiguration.class);
             }
         }
+
+        if (pluginConfiguration == null) {
+            pluginConfiguration = new JNomadPluginConfiguration();
+        }
+
+        for (JNomadPluginConfiguration.DBEnvironment env : pluginConfiguration.getEnvironmentList()) {
+            System.out.println("Found environment: " + env.getEnvironmentName() + " - Connections: " + env.getConnectionList().size());
+
+            for (JNomadPluginConfiguration.DBConnection conn : env.getConnectionList()) {
+                jnomad.getDbHost().add(conn.getHost() + ":" + conn.getPort());
+                jnomad.getDbDatabase().add(conn.getDatabase());
+                jnomad.getDbUsername().add(conn.getUsername());
+                jnomad.getDbPassword().add(conn.getPassword());
+                System.out.println("Found connection settings for database: " + conn.getDatabase() + " (Host: " + conn.getHost() + ":" + conn.getPort() + ")");
+            }
+        }
+        jnomad.setIndexPriorityThreshold(pluginConfiguration.getRecommendIndexThreshold());
 
         System.out.println("Scanning all files!");
         QueryLiteralExtractor.isDisabled = true;
@@ -230,7 +223,7 @@ class JNomadInspection extends BaseJavaLocalInspectionTool {
                     //slow queries
                     for (QueryScore queryScore : fileFullReport.getQueryScoreList()) {
                         if ((lineNumber == queryScore.getQueryLocation().begin.line || lineNumber == queryScore.getQueryLocation().end.line)
-                                && queryScore.getScore() >= slowQueryThreshold) {
+                                && queryScore.getScore() >= pluginConfiguration.getSlowQueryThreshold()) {
                             holder.registerProblem(expression.getArgumentList(), "Slow query detected! Query score: " + queryScore.getScore());
                             System.out.println("Registered slow query to expression: " + expression + " - Line number: " + lineNumber);
                             return;
@@ -282,7 +275,7 @@ class JNomadInspection extends BaseJavaLocalInspectionTool {
 
     private static int getLineNumber(File f, TextRange textRange) {
         try {
-            BufferedReader br = Files.newBufferedReader(f.toPath());
+            BufferedReader br = java.nio.file.Files.newBufferedReader(f.toPath());
             String line;
             int pos = 0;
             int lineNumber = 0;
