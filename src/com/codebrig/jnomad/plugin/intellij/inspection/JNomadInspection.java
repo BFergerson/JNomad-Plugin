@@ -43,56 +43,6 @@ class JNomadInspection extends BaseJavaLocalInspectionTool {
     @NonNls
     private static final String CHECKED_CLASSES = "javax.persistence.Query;javax.persistence.TypedQuery;java.sql.PreparedStatement";
 
-    @Override
-    public boolean isEnabledByDefault() {
-        return true;
-    }
-
-    @NotNull
-    @Override
-    public String getDisplayName() {
-        return "JNomad (Query scanner/optimizer)";
-    }
-
-    @NotNull
-    @Override
-    public String getGroupDisplayName() {
-        return GroupNames.PERFORMANCE_GROUP_NAME;
-    }
-
-    @NotNull
-    @Override
-    public String getShortName() {
-        return "JNomad";
-    }
-
-    @Nullable
-    @Override
-    public String getStaticDescription() {
-        return "JNomad - Version " + JNomadCLI.JNOMAD_VERSION + " (Build: " + JNomadCLI.JNOMAD_BUILD_DATE + ")";
-    }
-
-    @Contract("null -> false")
-    private boolean isCheckedType(PsiType type) {
-        if (!(type instanceof PsiClassType)) return false;
-
-        PsiClass element = ((PsiClassType) type).resolveGenerics().getElement();
-        StringTokenizer tokenizer = new StringTokenizer(CHECKED_CLASSES, ";");
-        while (tokenizer.hasMoreTokens()) {
-            String className = tokenizer.nextToken();
-            if (element != null && className.equals(element.getQualifiedName())) return true;
-            if (type.equalsToText(className)) return true;
-        }
-
-        return false;
-    }
-
-    @Override
-    public void cleanup(@NotNull Project project) {
-        super.cleanup(project);
-        if (jnomad != null) jnomad.closeCache();
-    }
-
     private transient static final PostgresDatabaseDataType databaseDataType = new PostgresDatabaseDataType();
     private final Cache<String, FileFullReport> fileReportCache = CacheBuilder.newBuilder()
             .expireAfterAccess(5, TimeUnit.MINUTES).build();
@@ -271,6 +221,56 @@ class JNomadInspection extends BaseJavaLocalInspectionTool {
             e.printStackTrace();
         }
         return fileReport;
+    }
+
+    @Override
+    public boolean isEnabledByDefault() {
+        return true;
+    }
+
+    @NotNull
+    @Override
+    public String getDisplayName() {
+        return "JNomad (Query scanner/optimizer)";
+    }
+
+    @NotNull
+    @Override
+    public String getGroupDisplayName() {
+        return GroupNames.PERFORMANCE_GROUP_NAME;
+    }
+
+    @NotNull
+    @Override
+    public String getShortName() {
+        return "JNomad";
+    }
+
+    @Nullable
+    @Override
+    public String getStaticDescription() {
+        return "JNomad - Version " + JNomadCLI.JNOMAD_VERSION + " (Build: " + JNomadCLI.JNOMAD_BUILD_DATE + ")";
+    }
+
+    @Contract("null -> false")
+    private boolean isCheckedType(PsiType type) {
+        if (!(type instanceof PsiClassType)) return false;
+
+        PsiClass element = ((PsiClassType) type).resolveGenerics().getElement();
+        StringTokenizer tokenizer = new StringTokenizer(CHECKED_CLASSES, ";");
+        while (tokenizer.hasMoreTokens()) {
+            String className = tokenizer.nextToken();
+            if (element != null && className.equals(element.getQualifiedName())) return true;
+            if (type.equalsToText(className)) return true;
+        }
+
+        return false;
+    }
+
+    @Override
+    public void cleanup(@NotNull Project project) {
+        super.cleanup(project);
+        if (jnomad != null) jnomad.closeCache();
     }
 
     private static int getLineNumber(File f, TextRange textRange) {
