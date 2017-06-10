@@ -47,7 +47,7 @@ public class JNomadPluginRegistration implements ApplicationComponent {
 
                     PropertiesComponent propertiesComponent = PropertiesComponent.getInstance(project);
                     propertiesComponent.setValue("jnomad.plugin.configuration", new Gson().toJson(pluginConfiguration));
-                    JNomadInspection.resetSetup();
+                    JNomadInspection.resetJNomadSetup();
                 }
             }
         };

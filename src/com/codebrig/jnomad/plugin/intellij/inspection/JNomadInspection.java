@@ -51,12 +51,12 @@ class JNomadInspection extends BaseJavaLocalInspectionTool {
     private transient static boolean setupStarted = false;
     private transient static JNomadPluginConfiguration pluginConfiguration;
 
-    static synchronized void resetSetup() {
+    static synchronized void resetJNomadSetup() {
         JNomadInspection.jnomad = null;
         setupStarted = false;
     }
 
-    private static synchronized void setupFile() {
+    private static synchronized void setupJNomad() {
         if (JNomadInspection.jnomad != null || setupStarted) {
             return;
         }
@@ -136,7 +136,7 @@ class JNomadInspection extends BaseJavaLocalInspectionTool {
     @Override
     public PsiElementVisitor buildVisitor(@NotNull final ProblemsHolder holder, boolean isOnTheFly) {
         if (JNomadInspection.jnomad == null) {
-            setupFile();
+            setupJNomad();
         }
 
         final String scanFileLocation = holder.getFile().getVirtualFile().getPath();
