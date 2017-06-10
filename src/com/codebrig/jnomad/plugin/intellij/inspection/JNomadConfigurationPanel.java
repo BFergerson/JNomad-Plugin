@@ -19,8 +19,6 @@ class JNomadConfigurationPanel extends JPanel {
     private DefaultListModel<JNomadPluginConfiguration.DBEnvironment> environmentListModel = new DefaultListModel<>();
     private DefaultListModel<JNomadPluginConfiguration.DBConnection> databaseListModel = new DefaultListModel<>();
     private JNomadPluginConfiguration pluginConfiguration;
-    private int selectedEnvironment = -1;
-    private int selectedDatabase = -1;
 
     JNomadConfigurationPanel() {
         initComponents();
@@ -36,20 +34,12 @@ class JNomadConfigurationPanel extends JPanel {
         environmentList.setModel(environmentListModel);
         environmentList.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
-                selectedEnvironment = e.getFirstIndex();
-                if (environmentList.isSelectionEmpty()) {
-                    selectedEnvironment = -1;
-                }
                 loadEnvironment();
             }
         });
         databaseList.setModel(databaseListModel);
         databaseList.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
-                selectedDatabase = e.getFirstIndex();
-                if (databaseList.isSelectionEmpty()) {
-                    selectedDatabase = -1;
-                }
                 loadDatabase();
             }
         });
@@ -85,11 +75,11 @@ class JNomadConfigurationPanel extends JPanel {
     }
 
     private void loadDatabase() {
-        boolean databaseSelected = selectedDatabase != -1;
+        boolean databaseSelected = !databaseList.isSelectionEmpty();
         deleteConnectionButton.setEnabled(databaseSelected);
 
         if (databaseSelected) {
-            JNomadPluginConfiguration.DBConnection conn = databaseListModel.getElementAt(selectedDatabase);
+            JNomadPluginConfiguration.DBConnection conn = databaseList.getSelectedValue();
             databaseHostTextField.setText(conn.getHost());
             databasePortTextField.setText(Integer.toString(conn.getPort()));
             databaseDBTextField.setText(conn.getDatabase());
@@ -105,7 +95,7 @@ class JNomadConfigurationPanel extends JPanel {
     }
 
     private void loadEnvironment() {
-        boolean environmentSelected = selectedEnvironment != -1;
+        boolean environmentSelected = !environmentList.isSelectionEmpty();
         deleteEnvironmentButton.setEnabled(environmentSelected);
         databaseHostTextField.setEnabled(environmentSelected);
         databasePortTextField.setEnabled(environmentSelected);
