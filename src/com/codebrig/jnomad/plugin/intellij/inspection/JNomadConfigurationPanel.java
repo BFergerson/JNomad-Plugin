@@ -29,6 +29,7 @@ class JNomadConfigurationPanel extends JPanel {
         deleteConnectionButton.addActionListener(this::deleteConnectionButton);
         addEnvironmentButton.addActionListener(this::addEnvironmentButton);
         deleteEnvironmentButton.addActionListener(this::deleteEnvironmentButton);
+        environmentNameTextField.addActionListener(this::addEnvironmentButton); //enter key
 
         //UI stuff
         environmentList.setModel(environmentListModel);
