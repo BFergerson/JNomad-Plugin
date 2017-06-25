@@ -1,5 +1,6 @@
 package com.codebrig.jnomad.plugin.intellij.inspection;
 
+import com.codebrig.jnomad.task.explain.adapter.DatabaseAdapterType;
 import com.google.gson.Gson;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.project.Project;
@@ -86,6 +87,7 @@ class JNomadConfigurationPanel extends JPanel {
             databaseDBTextField.setText(conn.getDatabase());
             databaseUsernameTextField.setText(conn.getUsername());
             databasePasswordTextField.setText(conn.getPassword());
+            databaseTypeComboBox.setSelectedItem(conn.getDatabaseType().name());
         } else {
             databaseHostTextField.setText("");
             databasePortTextField.setText("");
@@ -105,7 +107,7 @@ class JNomadConfigurationPanel extends JPanel {
         databasePasswordTextField.setEnabled(environmentSelected);
         testConnectionButton.setEnabled(environmentSelected);
         addConnectionButton.setEnabled(environmentSelected);
-        deleteConnectionButton.setEnabled(environmentSelected);
+        databaseTypeComboBox.setEnabled(environmentSelected);
         databaseListModel.clear();
         databaseHostTextField.setText("");
         databasePortTextField.setText("");
@@ -173,6 +175,7 @@ class JNomadConfigurationPanel extends JPanel {
         conn.setDatabase(getDatabaseDB());
         conn.setUsername(getDatabaseUsername());
         conn.setPassword(getDatabasePassword());
+        conn.setDatabaseType(getDatabaseType());
         env.getConnectionList().add(conn);
         databaseListModel.addElement(conn);
 
@@ -197,8 +200,17 @@ class JNomadConfigurationPanel extends JPanel {
             String[] usernameParts = getDatabaseUsername().split(";");
             String[] passwordParts = getDatabasePassword().split(";");
             for (int i = 0; i < hostParts.length; i++) {
-                Class.forName("org.postgresql.Driver"); //todo: don't hardcode postgres
-                String connUrl = "jdbc:postgresql://" + hostParts[i] + ":" + getDatabasePort() + "/" + databaseParts[i];
+                String connUrl;
+                if (getDatabaseType().equals(DatabaseAdapterType.POSTGRESQL)) {
+                    Class.forName("org.postgresql.Driver");
+                    connUrl = "jdbc:postgresql://" + hostParts[i] + ":" + getDatabasePort() + "/" + databaseParts[i];
+                } else if (getDatabaseType().equals(DatabaseAdapterType.MYSQL)) {
+                    Class.forName("com.mysql.cj.jdbc.Driver");
+                    connUrl = "jdbc:mysql://" + hostParts[i] + ":" + getDatabasePort() + "/" + databaseParts[i];
+                } else {
+                    throw new UnsupportedOperationException();
+                }
+
                 Connection connection = DriverManager.getConnection(connUrl, usernameParts[i], passwordParts[i]);
                 connection.close();
                 System.out.println("Valid connection settings for database: " + databaseParts[i] + " (Host: " + hostParts[i] + ")");
@@ -207,6 +219,10 @@ class JNomadConfigurationPanel extends JPanel {
         } catch (Exception ex) {
             Messages.showErrorDialog("Invalid connection!\nReason: " + ex.getMessage(), "Invalid Database Connection");
         }
+    }
+
+    public DatabaseAdapterType getDatabaseType() {
+        return DatabaseAdapterType.fromString((String) databaseTypeComboBox.getSelectedItem());
     }
 
     private String getDatabaseHost() {
@@ -287,6 +303,8 @@ class JNomadConfigurationPanel extends JPanel {
         databaseList = new javax.swing.JList<>();
         addConnectionButton = new javax.swing.JButton();
         deleteConnectionButton = new javax.swing.JButton();
+        databaseTypeComboBox = new javax.swing.JComboBox<>();
+        databaseTypeLabel = new javax.swing.JLabel();
         jPanel1 = new javax.swing.JPanel();
         jScrollPane1 = new javax.swing.JScrollPane();
         environmentList = new javax.swing.JList<>();
@@ -371,6 +389,11 @@ class JNomadConfigurationPanel extends JPanel {
         deleteConnectionButton.setText("Delete Connection");
         deleteConnectionButton.setEnabled(false);
 
+        databaseTypeComboBox.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "PostgreSQL", "MySQL" }));
+        databaseTypeComboBox.setEnabled(false);
+
+        databaseTypeLabel.setText("Type:");
+
         javax.swing.GroupLayout databaseSettingsPanelLayout = new javax.swing.GroupLayout(databaseSettingsPanel);
         databaseSettingsPanel.setLayout(databaseSettingsPanelLayout);
         databaseSettingsPanelLayout.setHorizontalGroup(
@@ -383,27 +406,29 @@ class JNomadConfigurationPanel extends JPanel {
                                                         .addComponent(databaseHostLabel)
                                                         .addComponent(databaseUsernameLabel)
                                                         .addComponent(databasePasswordLabel)
-                                                        .addComponent(databaseDBLabel))
+                                                        .addComponent(databaseDBLabel)
+                                                        .addComponent(databaseTypeLabel))
                                                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                                                 .addGroup(databaseSettingsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                                                         .addComponent(databaseDBTextField, javax.swing.GroupLayout.Alignment.TRAILING)
-                                                        .addGroup(databaseSettingsPanelLayout.createSequentialGroup()
-                                                                .addGroup(databaseSettingsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                                                        .addComponent(databasePasswordTextField)
-                                                                        .addComponent(databaseUsernameTextField))
-                                                                .addGap(1, 1, 1))
                                                         .addGroup(databaseSettingsPanelLayout.createSequentialGroup()
                                                                 .addComponent(databaseHostTextField)
                                                                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                                                                 .addComponent(databasePortLabel)
                                                                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                                                .addComponent(databasePortTextField, javax.swing.GroupLayout.PREFERRED_SIZE, 125, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                                                                .addComponent(databasePortTextField, javax.swing.GroupLayout.PREFERRED_SIZE, 125, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                                        .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, databaseSettingsPanelLayout.createSequentialGroup()
+                                                                .addGroup(databaseSettingsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                                                                        .addComponent(databaseTypeComboBox, javax.swing.GroupLayout.Alignment.LEADING, 0, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                                                        .addComponent(databasePasswordTextField, javax.swing.GroupLayout.Alignment.LEADING)
+                                                                        .addComponent(databaseUsernameTextField, javax.swing.GroupLayout.Alignment.LEADING))
+                                                                .addGap(1, 1, 1))))
                                         .addComponent(databaseScrollPanel, javax.swing.GroupLayout.Alignment.TRAILING)
                                         .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, databaseSettingsPanelLayout.createSequentialGroup()
                                                 .addComponent(testConnectionButton)
-                                                .addGap(18, 18, Short.MAX_VALUE)
+                                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                                                 .addComponent(addConnectionButton)
-                                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                                                 .addComponent(deleteConnectionButton)))
                                 .addContainerGap())
         );
@@ -428,11 +453,15 @@ class JNomadConfigurationPanel extends JPanel {
                                 .addGroup(databaseSettingsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
                                         .addComponent(databasePasswordTextField, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE)
                                         .addComponent(databasePasswordLabel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                .addGroup(databaseSettingsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                        .addComponent(databaseTypeComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, 35, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                        .addComponent(databaseTypeLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 35, javax.swing.GroupLayout.PREFERRED_SIZE))
                                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                                 .addGroup(databaseSettingsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                                        .addComponent(testConnectionButton)
-                                        .addComponent(addConnectionButton)
-                                        .addComponent(deleteConnectionButton))
+                                        .addComponent(testConnectionButton, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                        .addComponent(addConnectionButton, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                        .addComponent(deleteConnectionButton, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))
                                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                                 .addComponent(databaseScrollPanel)
                                 .addContainerGap())
@@ -468,7 +497,7 @@ class JNomadConfigurationPanel extends JPanel {
                                                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                                                 .addComponent(environmentNameTextField))
                                         .addComponent(jSeparator1)
-                                        .addComponent(environmentExampleLabel, javax.swing.GroupLayout.DEFAULT_SIZE, 223, Short.MAX_VALUE))
+                                        .addComponent(environmentExampleLabel, javax.swing.GroupLayout.DEFAULT_SIZE, 218, Short.MAX_VALUE))
                                 .addContainerGap())
         );
         jPanel1Layout.setVerticalGroup(
@@ -487,7 +516,7 @@ class JNomadConfigurationPanel extends JPanel {
                                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                                 .addComponent(deleteEnvironmentButton)
                                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                                .addComponent(jScrollPane1)
+                                .addComponent(jScrollPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 288, Short.MAX_VALUE)
                                 .addContainerGap())
         );
 
@@ -532,6 +561,8 @@ class JNomadConfigurationPanel extends JPanel {
     private javax.swing.JTextField databasePortTextField;
     private javax.swing.JScrollPane databaseScrollPanel;
     private javax.swing.JPanel databaseSettingsPanel;
+    private javax.swing.JComboBox<String> databaseTypeComboBox;
+    private javax.swing.JLabel databaseTypeLabel;
     private javax.swing.JLabel databaseUsernameLabel;
     private javax.swing.JTextField databaseUsernameTextField;
     private javax.swing.JButton deleteConnectionButton;

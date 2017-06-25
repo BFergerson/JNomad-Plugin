@@ -1,5 +1,6 @@
 package com.codebrig.jnomad.plugin.intellij.inspection;
 
+import com.codebrig.jnomad.task.explain.adapter.DatabaseAdapterType;
 import com.google.gson.Gson;
 
 import java.util.ArrayList;
@@ -17,6 +18,7 @@ public class JNomadPluginConfiguration {
         private String database;
         private String username;
         private String password;
+        private DatabaseAdapterType databaseType;
 
         public String getHost() {
             return host;
@@ -56,6 +58,14 @@ public class JNomadPluginConfiguration {
 
         public void setPassword(String password) {
             this.password = password;
+        }
+
+        public DatabaseAdapterType getDatabaseType() {
+            return databaseType;
+        }
+
+        public void setDatabaseType(DatabaseAdapterType databaseType) {
+            this.databaseType = databaseType;
         }
 
         public String toString() {
