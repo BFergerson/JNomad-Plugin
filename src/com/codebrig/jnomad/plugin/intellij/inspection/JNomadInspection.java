@@ -4,17 +4,15 @@ import com.codebrig.jnomad.JNomad;
 import com.codebrig.jnomad.JNomadCLI;
 import com.codebrig.jnomad.SourceCodeTypeSolver;
 import com.codebrig.jnomad.model.FileFullReport;
-import com.codebrig.jnomad.model.QueryScore;
-import com.codebrig.jnomad.model.RecommendedIndex;
 import com.codebrig.jnomad.model.SourceCodeExtract;
-import com.codebrig.jnomad.task.explain.QueryIndexReport;
 import com.codebrig.jnomad.task.explain.adapter.postgres.PostgresDatabaseDataType;
 import com.codebrig.jnomad.task.extract.extractor.query.QueryLiteralExtractor;
 import com.codebrig.jnomad.task.parse.QueryParser;
-import com.github.javaparser.Range;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.hash.Hashing;
+import com.google.common.io.ByteSource;
+import com.google.common.io.ByteStreams;
 import com.google.gson.Gson;
 import com.intellij.codeInsight.daemon.GroupNames;
 import com.intellij.codeInspection.BaseJavaLocalInspectionTool;
@@ -24,15 +22,18 @@ import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
-import com.intellij.openapi.util.TextRange;
-import com.intellij.psi.*;
-import org.jetbrains.annotations.Contract;
-import org.jetbrains.annotations.NonNls;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.newvfs.impl.VirtualFileImpl;
+import com.intellij.psi.PsiElementVisitor;
+import org.apache.commons.io.IOUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.*;
-import java.util.*;
+import java.io.File;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -40,16 +41,13 @@ import java.util.concurrent.TimeUnit;
  */
 class JNomadInspection extends BaseJavaLocalInspectionTool {
 
-    @NonNls
-    private static final String CHECKED_CLASSES = "javax.persistence.Query;javax.persistence.TypedQuery;java.sql.PreparedStatement";
-
     private transient static final PostgresDatabaseDataType databaseDataType = new PostgresDatabaseDataType();
-    private final Cache<String, FileFullReport> fileReportCache = CacheBuilder.newBuilder()
+    private final static Cache<String, FileFullReport> fileReportCache = CacheBuilder.newBuilder()
             .expireAfterAccess(5, TimeUnit.MINUTES).build();
-    private transient static JNomad jnomad;
-    private transient static QueryParser queryParser;
-    private transient static boolean setupStarted = false;
-    private transient static JNomadPluginConfiguration pluginConfiguration;
+    transient static JNomad jnomad;
+    transient static QueryParser queryParser;
+    transient static boolean setupStarted = false;
+    transient static JNomadPluginConfiguration pluginConfiguration;
 
     static synchronized void resetJNomadSetup() {
         JNomadInspection.jnomad = null;
@@ -139,85 +137,34 @@ class JNomadInspection extends BaseJavaLocalInspectionTool {
             setupJNomad();
         }
 
-        final String scanFileLocation = holder.getFile().getVirtualFile().getPath();
-        final File scanFile = new File(scanFileLocation);
-        final FileFullReport fileFullReport = getFileFullReport(scanFile);
-        return new JavaElementVisitor() {
-
-            @Override
-            public void visitMethodCallExpression(PsiMethodCallExpression expression) {
-                super.visitMethodCallExpression(expression);
-                if (fileFullReport == null || JNomadInspection.jnomad == null) {
-                    return;
-                }
-
-                String methodCallName = expression.getMethodExpression().getReferenceName();
-                if (isCheckedType(expression.getType()) && methodCallName != null && methodCallName.toLowerCase().contains("query")) {
-                    int lineNumber = getLineNumber(scanFile, expression.getTextRange());
-
-                    //recommend indexes
-                    for (QueryScore queryScore : fileFullReport.getQueryScoreList()) {
-                        if ((lineNumber == queryScore.getQueryLocation().begin.line || lineNumber == queryScore.getQueryLocation().end.line)) {
-                            for (RecommendedIndex rIndex : fileFullReport.getRecommendedIndexList()) {
-                                if (rIndex.isIndexAffect(queryScore.getOriginalQuery())) {
-                                    holder.registerProblem(expression.getArgumentList(),
-                                            "Missing index detected! Recommended Index: " + rIndex.getIndexCreateSQL()
-                                                    + "\nIndex Priority: " + rIndex.getIndexPriority());
-                                    System.out.println("Registered missing index to expression: " + expression + " - Line number: " + lineNumber);
-                                    return;
-                                }
-                            }
-                        }
-                    }
-
-                    //slow queries
-                    for (QueryScore queryScore : fileFullReport.getQueryScoreList()) {
-                        if ((lineNumber == queryScore.getQueryLocation().begin.line || lineNumber == queryScore.getQueryLocation().end.line)
-                                && queryScore.getScore() >= pluginConfiguration.getSlowQueryThreshold()) {
-                            holder.registerProblem(expression.getArgumentList(), "Slow query detected! Query score: " + queryScore.getScore());
-                            System.out.println("Registered slow query to expression: " + expression + " - Line number: " + lineNumber);
-                            return;
-                        }
-                    }
-
-                    //failed queries
-                    QueryIndexReport indexReport = fileFullReport.getQueryIndexReport();
-                    List<String> failedQueryParseList = indexReport.getFailedQueryParseList();
-                    for (String failedQuery : failedQueryParseList) {
-                        SourceCodeExtract sourceCodeExtract = indexReport.getSourceCodeExtractMap().get(failedQuery);
-                        if (sourceCodeExtract != null) {
-                            Range failedQueryRange = sourceCodeExtract.getQueryLiteralExtractor().getQueryCallRange(failedQuery);
-                            if (lineNumber == failedQueryRange.begin.line || lineNumber == failedQueryRange.end.line) {
-                                holder.registerProblem(expression.getArgumentList(), "Invalid query detected! Reason: " + indexReport.getFailedQueryReason(failedQuery));
-                                System.out.println("Registered invalid query to expression: " + expression + " - Line number: " + lineNumber);
-                                return;
-                            }
-                        }
-                    }
-                }
-            }
-        };
+        FileFullReport fileFullReport = null;
+        VirtualFile virtualFile = holder.getFile().getVirtualFile();
+        if (virtualFile.getPath().endsWith("java") && virtualFile instanceof VirtualFileImpl) {
+            CharSequence contents = holder.getFile().getViewProvider().getContents();
+            fileFullReport = getFileFullReport(contents);
+        }
+        return new JNomadQueryVisitor(holder, holder.getFile().getVirtualFile(), fileFullReport);
     }
 
-    private synchronized FileFullReport getFileFullReport(File f) {
+    private static synchronized FileFullReport getFileFullReport(CharSequence charSequence) {
         FileFullReport fileReport = null;
         try {
-            if (f.exists() && f.getAbsolutePath().endsWith("java")) {
-                String md5Hash = com.google.common.io.Files.hash(f, Hashing.md5()).toString();
-                fileReport = fileReportCache.getIfPresent(md5Hash);
+            InputStream virtualFile = IOUtils.toInputStream(charSequence, "UTF-8");
+            String md5Hash = ByteSource.wrap(ByteStreams.toByteArray(virtualFile)).hash(Hashing.md5()).toString();
+            fileReport = fileReportCache.getIfPresent(md5Hash);
+            virtualFile.reset();
 
-                if (fileReport == null && JNomadInspection.jnomad != null) { //no cache; load file from disk
-                    QueryLiteralExtractor.isDisabled = false;
-                    SourceCodeExtract extract = JNomadInspection.jnomad.scanSingleFile(f);
-                    if (extract.getQueryLiteralExtractor().getQueryFound()) {
-                        List<SourceCodeExtract> scanList = Collections.singletonList(extract);
-                        queryParser.run(scanList);
-                        fileReport = new FileFullReport(f, JNomadInspection.jnomad, databaseDataType, queryParser.getAliasMap(), scanList);
-                        fileReportCache.put(md5Hash, fileReport);
-                    }
+            if (fileReport == null && JNomadInspection.jnomad != null) { //no cache; load file from disk
+                QueryLiteralExtractor.isDisabled = false;
+                SourceCodeExtract extract = JNomadInspection.jnomad.scanSingleFile(virtualFile);
+                if (extract.getQueryLiteralExtractor().getQueryFound()) {
+                    List<SourceCodeExtract> scanList = Collections.singletonList(extract);
+                    queryParser.run(scanList);
+                    fileReport = new FileFullReport(null, JNomadInspection.jnomad, databaseDataType, queryParser.getAliasMap(), scanList);
+                    fileReportCache.put(md5Hash, fileReport);
                 }
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
         return fileReport;
@@ -252,46 +199,10 @@ class JNomadInspection extends BaseJavaLocalInspectionTool {
         return "JNomad - Version " + JNomadCLI.JNOMAD_VERSION + " (Build: " + JNomadCLI.JNOMAD_BUILD_DATE + ")";
     }
 
-    @Contract("null -> false")
-    private boolean isCheckedType(PsiType type) {
-        if (!(type instanceof PsiClassType)) return false;
-
-        PsiClass element = ((PsiClassType) type).resolveGenerics().getElement();
-        StringTokenizer tokenizer = new StringTokenizer(CHECKED_CLASSES, ";");
-        while (tokenizer.hasMoreTokens()) {
-            String className = tokenizer.nextToken();
-            if (element != null && className.equals(element.getQualifiedName())) return true;
-            if (type.equalsToText(className)) return true;
-        }
-
-        return false;
-    }
-
     @Override
     public void cleanup(@NotNull Project project) {
         super.cleanup(project);
         if (jnomad != null) jnomad.closeCache();
-    }
-
-    private static int getLineNumber(File f, TextRange textRange) {
-        try {
-            BufferedReader br = java.nio.file.Files.newBufferedReader(f.toPath());
-            String line;
-            int pos = 0;
-            int lineNumber = 0;
-
-            while ((line = br.readLine()) != null) {
-                pos += line.length() + 1; //+1 for new line
-                lineNumber++;
-
-                if (pos >= textRange.getStartOffset()) {
-                    return lineNumber;
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return -1;
     }
 
 }
