@@ -117,7 +117,6 @@ public class JNomadQueryVisitor extends JavaElementVisitor {
         return false;
     }
 
-
     private static int getLineNumber(VirtualFile virtualFile, TextRange textRange) {
         try {
             BufferedReader br = new BufferedReader(new InputStreamReader(virtualFile.getInputStream()));
