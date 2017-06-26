@@ -1,6 +1,5 @@
 package com.codebrig.jnomad.plugin.intellij.inspection;
 
-import com.codebrig.jnomad.model.FileFullReport;
 import com.codebrig.jnomad.model.QueryScore;
 import com.codebrig.jnomad.model.RecommendedIndex;
 import com.codebrig.jnomad.model.SourceCodeExtract;
@@ -30,21 +29,27 @@ public class JNomadQueryVisitor extends JavaElementVisitor {
 
     private final ProblemsHolder holder;
     private final VirtualFile virtualFile;
-    private final FileFullReport fileFullReport;
+    private final EnvFileFullReport[] fileFullReports;
 
-    JNomadQueryVisitor(ProblemsHolder holder, VirtualFile virtualFile, FileFullReport fileFullReport) {
+    JNomadQueryVisitor(ProblemsHolder holder, VirtualFile virtualFile, EnvFileFullReport... fileFullReports) {
         this.holder = holder;
         this.virtualFile = virtualFile;
-        this.fileFullReport = fileFullReport;
+        this.fileFullReports = fileFullReports;
     }
 
     @Override
     public void visitMethodCallExpression(PsiMethodCallExpression expression) {
         super.visitMethodCallExpression(expression);
-        if (fileFullReport == null || JNomadInspection.jnomad == null) {
+        if (fileFullReports == null || fileFullReports.length == 0 || JNomadInspection.jnomad == null) {
             return;
         }
 
+        for (EnvFileFullReport fullReport : fileFullReports) {
+            addEnvironmentProblems(expression, fullReport);
+        }
+    }
+
+    private void addEnvironmentProblems(PsiMethodCallExpression expression, EnvFileFullReport fileFullReport) {
         String methodCallName = expression.getMethodExpression().getReferenceName();
         if (isCheckedType(expression.getType()) && methodCallName != null && methodCallName.toLowerCase().contains("query")) {
             int lineNumber = getLineNumber(this.virtualFile, expression.getTextRange());
@@ -55,9 +60,9 @@ public class JNomadQueryVisitor extends JavaElementVisitor {
                     for (RecommendedIndex rIndex : fileFullReport.getRecommendedIndexList()) {
                         if (rIndex.isIndexAffect(queryScore.getOriginalQuery())) {
                             holder.registerProblem(expression.getArgumentList(),
-                                    "Missing index detected! Recommended Index: " + rIndex.getIndexCreateSQL()
+                                    "ENV: " + fileFullReport.getEnvironment().getEnvironmentName() + " - Missing index detected! Recommended Index: " + rIndex.getIndexCreateSQL()
                                             + "\nIndex Priority: " + rIndex.getIndexPriority());
-                            System.out.println("Registered missing index to expression: " + expression + " - Line number: " + lineNumber);
+                            System.out.println("ENV: " + fileFullReport.getEnvironment().getEnvironmentName() + " - Registered missing index to expression: " + expression + " - Line number: " + lineNumber);
                             return;
                         }
                     }
@@ -68,8 +73,8 @@ public class JNomadQueryVisitor extends JavaElementVisitor {
             for (QueryScore queryScore : fileFullReport.getQueryScoreList()) {
                 if ((lineNumber == queryScore.getQueryLocation().begin.line || lineNumber == queryScore.getQueryLocation().end.line)
                         && queryScore.getScore() >= JNomadInspection.pluginConfiguration.getSlowQueryThreshold()) {
-                    holder.registerProblem(expression.getArgumentList(), "Slow query detected! Query score: " + queryScore.getScore());
-                    System.out.println("Registered slow query to expression: " + expression + " - Line number: " + lineNumber);
+                    holder.registerProblem(expression.getArgumentList(), "ENV: " + fileFullReport.getEnvironment().getEnvironmentName() + " - Slow query detected! Query score: " + queryScore.getScore());
+                    System.out.println("ENV: " + fileFullReport.getEnvironment().getEnvironmentName() + " - Registered slow query to expression: " + expression + " - Line number: " + lineNumber);
                     return;
                 }
             }
@@ -93,8 +98,8 @@ public class JNomadQueryVisitor extends JavaElementVisitor {
                             reason = "Failed to parse query";
                         }
 
-                        holder.registerProblem(expression.getArgumentList(), "Invalid query detected! Reason: " + reason);
-                        System.out.println("Registered invalid query to expression: " + expression + " - Line number: " + lineNumber);
+                        holder.registerProblem(expression.getArgumentList(), "ENV: " + fileFullReport.getEnvironment().getEnvironmentName() + " - Invalid query detected! Reason: " + reason);
+                        System.out.println("ENV: " + fileFullReport.getEnvironment().getEnvironmentName() + " - Registered invalid query to expression: " + expression + " - Line number: " + lineNumber);
                         return;
                     }
                 }

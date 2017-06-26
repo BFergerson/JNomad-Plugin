@@ -41,8 +41,7 @@ import java.util.concurrent.TimeUnit;
  */
 class JNomadInspection extends BaseJavaLocalInspectionTool {
 
-    private transient static final PostgresDatabaseDataType databaseDataType = new PostgresDatabaseDataType();
-    private final static Cache<String, FileFullReport> fileReportCache = CacheBuilder.newBuilder()
+    private final static Cache<String, List<EnvFileFullReport>> fileReportCache = CacheBuilder.newBuilder()
             .expireAfterAccess(5, TimeUnit.MINUTES).build();
     transient static JNomad jnomad;
     transient static QueryParser queryParser;
@@ -107,14 +106,10 @@ class JNomadInspection extends BaseJavaLocalInspectionTool {
             pluginConfiguration = new JNomadPluginConfiguration();
         }
 
+        //debug output environments and database connections found in config
         for (JNomadPluginConfiguration.DBEnvironment env : pluginConfiguration.getEnvironmentList()) {
             System.out.println("Found environment: " + env.getEnvironmentName() + " - Connections: " + env.getConnectionList().size());
-
             for (JNomadPluginConfiguration.DBConnection conn : env.getConnectionList()) {
-                jnomad.getDbHost().add(conn.getHost() + ":" + conn.getPort());
-                jnomad.getDbDatabase().add(conn.getDatabase());
-                jnomad.getDbUsername().add(conn.getUsername());
-                jnomad.getDbPassword().add(conn.getPassword());
                 System.out.println("Found connection settings for database: " + conn.getDatabase() + " (Host: " + conn.getHost() + ":" + conn.getPort() + ")");
             }
         }
@@ -137,37 +132,46 @@ class JNomadInspection extends BaseJavaLocalInspectionTool {
             setupJNomad();
         }
 
-        FileFullReport fileFullReport = null;
+        List<EnvFileFullReport> fileFullReports;
         VirtualFile virtualFile = holder.getFile().getVirtualFile();
         if (virtualFile.getPath().endsWith("java") && virtualFile instanceof VirtualFileImpl) {
             CharSequence contents = holder.getFile().getViewProvider().getContents();
-            fileFullReport = getFileFullReport(contents);
+            fileFullReports = getFileFullReports(contents);
+            return new JNomadQueryVisitor(holder, holder.getFile().getVirtualFile(), fileFullReports.toArray(new EnvFileFullReport[0]));
         }
-        return new JNomadQueryVisitor(holder, holder.getFile().getVirtualFile(), fileFullReport);
+        return new JNomadQueryVisitor(holder, holder.getFile().getVirtualFile(), null);
     }
 
-    private static synchronized FileFullReport getFileFullReport(CharSequence charSequence) {
-        FileFullReport fileReport = null;
+    private static synchronized List<EnvFileFullReport> getFileFullReports(CharSequence charSequence) {
+        List<EnvFileFullReport> fileReports = new ArrayList<>();
         try {
             InputStream virtualFile = IOUtils.toInputStream(charSequence, "UTF-8");
             String md5Hash = ByteSource.wrap(ByteStreams.toByteArray(virtualFile)).hash(Hashing.md5()).toString();
-            fileReport = fileReportCache.getIfPresent(md5Hash);
+            fileReports = fileReportCache.getIfPresent(md5Hash);
             virtualFile.reset();
 
-            if (fileReport == null && JNomadInspection.jnomad != null) { //no cache; load file from disk
+            if (fileReports == null && JNomadInspection.jnomad != null) { //no cache; load file from disk
+                fileReports = new ArrayList<>();
                 QueryLiteralExtractor.isDisabled = false;
                 SourceCodeExtract extract = JNomadInspection.jnomad.scanSingleFile(virtualFile);
                 if (extract.getQueryLiteralExtractor().getQueryFound()) {
                     List<SourceCodeExtract> scanList = Collections.singletonList(extract);
                     queryParser.run(scanList);
-                    fileReport = new FileFullReport(null, JNomadInspection.jnomad, databaseDataType, queryParser.getAliasMap(), scanList);
-                    fileReportCache.put(md5Hash, fileReport);
+
+                    for (JNomadPluginConfiguration.DBEnvironment env : pluginConfiguration.getEnvironmentList()) {
+                        for (JNomadPluginConfiguration.DBConnection conn : env.getConnectionList()) {
+                            EnvFileFullReport envReport = new EnvFileFullReport(null, JNomadInspection.jnomad, conn.getDataType(), queryParser.getAliasMap(), scanList, conn.toConnection());
+                            envReport.setEnvironment(env);
+                            fileReports.add(envReport);
+                        }
+                    }
+                    fileReportCache.put(md5Hash, fileReports);
                 }
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
-        return fileReport;
+        return fileReports;
     }
 
     @Override

@@ -1,8 +1,14 @@
 package com.codebrig.jnomad.plugin.intellij.inspection;
 
+import com.codebrig.jnomad.task.explain.DatabaseDataType;
 import com.codebrig.jnomad.task.explain.adapter.DatabaseAdapterType;
+import com.codebrig.jnomad.task.explain.adapter.postgres.MysqlDatabaseDataType;
+import com.codebrig.jnomad.task.explain.adapter.postgres.PostgresDatabaseDataType;
 import com.google.gson.Gson;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,6 +25,38 @@ public class JNomadPluginConfiguration {
         private String username;
         private String password;
         private DatabaseAdapterType databaseType;
+        private DatabaseDataType dataType;
+
+        public Connection toConnection() throws SQLException {
+            String connUrl;
+            try {
+                if (getDatabaseType().equals(DatabaseAdapterType.POSTGRESQL)) {
+                    Class.forName("org.postgresql.Driver");
+                    connUrl = "jdbc:postgresql://" + host + ":" + port + "/" + database;
+                } else if (getDatabaseType().equals(DatabaseAdapterType.MYSQL)) {
+                    Class.forName("com.mysql.cj.jdbc.Driver");
+                    connUrl = "jdbc:mysql://" + host + ":" + port + "/" + database;
+                } else {
+                    throw new UnsupportedOperationException();
+                }
+            } catch (ClassNotFoundException e) {
+                throw new UnsupportedOperationException(e);
+            }
+            return DriverManager.getConnection(connUrl, username, password);
+        }
+
+        public DatabaseDataType getDataType() {
+            if (dataType == null) {
+                if (databaseType == DatabaseAdapterType.POSTGRESQL) {
+                    dataType = new PostgresDatabaseDataType();
+                } else if (databaseType == DatabaseAdapterType.MYSQL) {
+                    dataType = new MysqlDatabaseDataType();
+                } else {
+                    throw new UnsupportedOperationException();
+                }
+            }
+            return dataType;
+        }
 
         public String getHost() {
             return host;
