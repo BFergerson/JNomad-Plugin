@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.codebrig.jnomad.plugin</id>
     <name>JNomad Plugin</name>
-    <version>1.1</version>
+    <version>1.2</version>
     <vendor email="support@codebrig.com" url="http://www.codebrig.com">CodeBrig, LLC.</vendor>
 
     <description><![CDATA[
